@@ -1,3 +1,6 @@
+#ifndef MEWM_H
+#define MEWM_H
+
 #include <X11/Xlib.h>
 
 #define win        (client *t=0, *c=list; c && t!=list->prev; t=c, c=c->next)
@@ -61,3 +64,5 @@ void overlay_process_input(void);
 void expose(XEvent *e);
 
 static int xerror() { return 0; }
+
+#endif
