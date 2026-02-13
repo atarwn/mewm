@@ -14,7 +14,8 @@
 
 #include "mewm.h"
 
-static client       *list = {0}, *ws_list[10] = {0}, *cur;
+static client       *list = {0}, *ws_list[10] = {0}, *cur,
+                    *ws_last_focus[10] = {0};
 static int          ws = 1, sw, sh, wx, wy, numlock = 0;
 static unsigned int ww, wh;
 
@@ -39,6 +40,7 @@ static void (*events[LASTEvent])(XEvent *e) = {
 
 void win_focus(client *c) {
     cur = c;
+    ws_last_focus[ws] = c;
     XSetInputFocus(d, cur->w, RevertToParent, CurrentTime);
 }
 
@@ -218,36 +220,53 @@ void win_to_ws(const Arg arg) {
 }
 
 void win_prev(const Arg arg) {
-    if (!cur) return;
+    if (!cur || !list || !cur->prev) return;
 
-    XRaiseWindow(d, cur->prev->w);
+    client *target = cur->prev;
+    if (target == cur) return;
+
+    XRaiseWindow(d, target->w);
     win_focus(cur->prev);
 }
 
 void win_next(const Arg arg) {
-    if (!cur) return;
+    if (!cur || !list || !cur->next) return;
 
-    XRaiseWindow(d, cur->next->w);
+    client *target = cur->next;
+    if (target == cur) return;
+
+    XRaiseWindow(d, target->w);
     win_focus(cur->next);
 }
 
 void ws_go(const Arg arg) {
-    int tmp = ws;
-
     if (arg.i == ws) return;
 
     ws_save(ws);
-    ws_sel(arg.i);
+    int old_ws = ws;
 
+    ws_sel(arg.i);
     for win XMapWindow(d, c->w);
 
-    ws_sel(tmp);
-
+    ws_sel(old_ws);
     for win XUnmapWindow(d, c->w);
 
     ws_sel(arg.i);
 
-    if (list) win_focus(list); else cur = 0;
+    // if (list) win_focus(list); else cur = 0;
+    if (!list) {
+        cur = 0;
+        ws_last_focus[ws] = 0;
+        return;
+    }
+
+    client *found = NULL;
+    for win if (c == ws_last_focus[ws]) found = c;
+    client *target = found ? found : list;
+
+    cur = target;
+    XSetInputFocus(d, cur->w, RevertToParent, CurrentTime);
+    ws_last_focus[ws] = cur;
 }
 
 void configure_request(XEvent *e) {
