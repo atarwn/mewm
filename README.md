@@ -1,8 +1,8 @@
-# mewm (Minimal Elegant Window Manager)
+# mewm
 
 > **An adequate fusion of gbwm and sowm**
 
-*A tiny floating window manager with grid-based window placement.*
+<p align=right><i>it just meows</i></p>
 
 ---
 
