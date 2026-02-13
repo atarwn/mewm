@@ -5,6 +5,7 @@
 #include <X11/keysym.h>
 #include <X11/XKBlib.h>
 #include <X11/Xft/Xft.h>
+#include <X11/extensions/Xrandr.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -23,6 +24,9 @@ static Display      *d;
 static XButtonEvent mouse;
 static Window       root;
 
+static Monitor      *mons = NULL;
+static Monitor      *selmon = NULL;
+
 static void (*events[LASTEvent])(XEvent *e) = {
     [ButtonPress]      = button_press,
     [ButtonRelease]    = button_release,
@@ -38,10 +42,118 @@ static void (*events[LASTEvent])(XEvent *e) = {
 
 #include "config.h"
 
+void geometry_update(void) {
+    Monitor *m;
+    XRRScreenResources *sr;
+    XRRCrtcInfo *ci;
+    
+    if (!d) return;
+    
+    monitor_cleanup();
+    
+    int screen = DefaultScreen(d);
+    sr = XRRGetScreenResources(d, root);
+    
+    if (!sr) {
+        monitor_create(0, 0, XDisplayWidth(d, screen), XDisplayHeight(d, screen));
+        sw = XDisplayWidth(d, screen);
+        sh = XDisplayHeight(d, screen);
+        return;
+    }
+    
+    for (int i = 0; i < sr->ncrtc; i++) {
+        ci = XRRGetCrtcInfo(d, sr, sr->crtcs[i]);
+        
+        if (ci && ci->noutput > 0 && ci->width > 0 && ci->height > 0) {
+            monitor_create(ci->x, ci->y, ci->width, ci->height);
+        }
+        
+        if (ci) XRRFreeCrtcInfo(ci);
+    }
+    
+    XRRFreeScreenResources(sr);
+    
+    if (!mons) {
+        monitor_create(0, 0, XDisplayWidth(d, screen), XDisplayHeight(d, screen));
+    }
+    
+    if (!selmon || !monitor_exists(selmon)) {
+        selmon = mons;
+    }
+    
+    sw = 0;
+    sh = 0;
+    for (m = mons; m; m = m->next) {
+        int right = m->x + m->w;
+        int bottom = m->y + m->h;
+        if (right > sw) sw = right;
+        if (bottom > sh) sh = bottom;
+    }
+}
+
+void monitor_create(int x, int y, int w, int h) {
+    Monitor *m = calloc(1, sizeof(Monitor));
+    if (!m) return;
+    
+    m->x = x;
+    m->y = y;
+    m->w = w;
+    m->h = h;
+    m->next = mons;
+    mons = m;
+    
+    if (!selmon) selmon = m;
+}
+
+void monitor_cleanup(void) {
+    Monitor *m;
+    while (mons) {
+        m = mons->next;
+        free(mons);
+        mons = m;
+    }
+    selmon = NULL;
+}
+
+int monitor_exists(Monitor *mon) {
+    Monitor *m;
+    for (m = mons; m; m = m->next) {
+        if (m == mon) return 1;
+    }
+    return 0;
+}
+
+Monitor* get_monitor_at(int x, int y) {
+    Monitor *m;
+    for (m = mons; m; m = m->next) {
+        if (x >= m->x && x < m->x + m->w &&
+            y >= m->y && y < m->y + m->h) {
+            return m;
+        }
+    }
+    return selmon ? selmon : mons;
+}
+
+Monitor* get_window_monitor(Window w) {
+    int x, y;
+    unsigned int width, height;
+    
+    if (!win_size(w, &x, &y, &width, &height)) {
+        return selmon ? selmon : mons;
+    }
+    
+    int center_x = x + width / 2;
+    int center_y = y + height / 2;
+    
+    return get_monitor_at(center_x, center_y);
+}
+
 void win_focus(client *c) {
     cur = c;
     ws_last_focus[ws] = c;
     XSetInputFocus(d, cur->w, RevertToParent, CurrentTime);
+    
+    selmon = get_window_monitor(c->w);
 }
 
 void notify_destroy(XEvent *e) {
@@ -109,10 +221,9 @@ void key_press(XEvent *e) {
             overlay_input[1] = ch;
             overlay_draw();
             
-            // Небольшая задержка для визуализации
             struct timespec ts = {
                 .tv_sec = 0,
-                .tv_nsec = 150000 * 1000
+                .tv_nsec = 150000000
             };
             nanosleep(&ts, NULL);
             
@@ -124,7 +235,7 @@ void key_press(XEvent *e) {
 
     KeySym keysym = XkbKeycodeToKeysym(d, e->xkey.keycode, 0, 0);
 
-    for (unsigned int i=0; i < sizeof(keys)/sizeof(*keys); ++i)
+    for (unsigned int i = 0; i < sizeof(keys) / sizeof(*keys); ++i)
         if (keys[i].keysym == keysym &&
             mod_clean(keys[i].mod) == mod_clean(e->xkey.state))
             keys[i].function(keys[i].arg);
@@ -139,13 +250,14 @@ void button_press(XEvent *e) {
 }
 
 void button_release(XEvent *e) {
+    (void)e;
     mouse.subwindow = 0;
 }
 
 void win_add(Window w) {
     client *c;
 
-    if (!(c = (client *) calloc(1, sizeof(client))))
+    if (!(c = (client *)calloc(1, sizeof(client))))
         exit(1);
 
     c->w = w;
@@ -155,7 +267,6 @@ void win_add(Window w) {
         c->prev          = list->prev;
         list->prev       = c;
         c->next          = list;
-
     } else {
         list = c;
         list->prev = list->next = list;
@@ -169,33 +280,42 @@ void win_del(Window w) {
 
     for win if (c->w == w) x = c;
 
-    if (!list || !x)  return;
+    if (!list || !x) return;
     if (x->prev == x) list = 0;
-    if (list == x)    list = x->next;
-    if (x->next)      x->next->prev = x->prev;
-    if (x->prev)      x->prev->next = x->next;
+    if (list == x) list = x->next;
+    if (x->next) x->next->prev = x->prev;
+    if (x->prev) x->prev->next = x->next;
 
     free(x);
     ws_save(ws);
 }
 
 void win_kill(const Arg arg) {
+    (void)arg;
     if (cur) XKillClient(d, cur->w);
 }
 
 void win_center(const Arg arg) {
+    (void)arg;
     if (!cur) return;
 
+    Monitor *m = get_window_monitor(cur->w);
+    if (!m) m = selmon ? selmon : mons;
+    
     win_size(cur->w, &(int){0}, &(int){0}, &ww, &wh);
-    XMoveWindow(d, cur->w, (sw - ww) / 2, (sh - wh) / 2);
+    XMoveWindow(d, cur->w, m->x + (m->w - ww) / 2, m->y + (m->h - wh) / 2);
 }
 
 void win_fs(const Arg arg) {
+    (void)arg;
     if (!cur) return;
+
+    Monitor *m = get_window_monitor(cur->w);
+    if (!m) m = selmon ? selmon : mons;
 
     if ((cur->f = cur->f ? 0 : 1)) {
         win_size(cur->w, &cur->wx, &cur->wy, &cur->ww, &cur->wh);
-        XMoveResizeWindow(d, cur->w, 0, 0, sw, sh);
+        XMoveResizeWindow(d, cur->w, m->x, m->y, m->w, m->h);
         XRaiseWindow(d, cur->w);
     } else {
         XMoveResizeWindow(d, cur->w, cur->wx, cur->wy, cur->ww, cur->wh);
@@ -221,6 +341,7 @@ void win_to_ws(const Arg arg) {
 }
 
 void win_prev(const Arg arg) {
+    (void)arg;
     if (!cur || !list || !cur->prev) return;
 
     client *target = cur->prev;
@@ -231,6 +352,7 @@ void win_prev(const Arg arg) {
 }
 
 void win_next(const Arg arg) {
+    (void)arg;
     if (!cur || !list || !cur->next) return;
 
     client *target = cur->next;
@@ -254,7 +376,6 @@ void ws_go(const Arg arg) {
 
     ws_sel(arg.i);
 
-    // if (list) win_focus(list); else cur = 0;
     if (!list) {
         cur = 0;
         ws_last_focus[ws] = 0;
@@ -286,7 +407,7 @@ void configure_request(XEvent *e) {
 void map_request(XEvent *e) {
     Window w = e->xmaprequest.window;
 
-    XSelectInput(d, w, StructureNotifyMask|EnterWindowMask);
+    XSelectInput(d, w, StructureNotifyMask | EnterWindowMask);
     win_size(w, &wx, &wy, &ww, &wh);
     win_add(w);
     cur = list->prev;
@@ -306,16 +427,34 @@ void mapping_notify(XEvent *e) {
     }
 }
 
+void handle_randr_event(XEvent *e) {
+    XRRScreenChangeNotifyEvent *ev = (XRRScreenChangeNotifyEvent *)e;
+    
+    if (ev->rotation == RR_Rotate_90 || ev->rotation == RR_Rotate_270) {
+        sw = ev->height;
+        sh = ev->width;
+    } else {
+        sw = ev->width;
+        sh = ev->height;
+    }
+    
+    geometry_update();
+    
+    if (overlay_win) {
+        XMoveResizeWindow(d, overlay_win, 0, 0, sw, sh);
+    }
+}
+
 void run(const Arg arg) {
     if (fork()) return;
     if (d) close(ConnectionNumber(d));
 
     setsid();
-    execvp((char*)arg.com[0], (char**)arg.com);
+    execvp((char *)arg.com[0], (char **)arg.com);
 }
 
 void input_grab(Window root) {
-    unsigned int i, j, modifiers[] = {0, LockMask, numlock, numlock|LockMask};
+    unsigned int i, j, modifiers[] = {0, LockMask, numlock, numlock | LockMask};
     XModifierKeymap *modmap = XGetModifierMapping(d);
     KeyCode code;
 
@@ -327,49 +466,54 @@ void input_grab(Window root) {
 
     XUngrabKey(d, AnyKey, AnyModifier, root);
 
-    for (i = 0; i < sizeof(keys)/sizeof(*keys); i++)
+    for (i = 0; i < sizeof(keys) / sizeof(*keys); i++)
         if ((code = XKeysymToKeycode(d, keys[i].keysym)))
-            for (j = 0; j < sizeof(modifiers)/sizeof(*modifiers); j++)
+            for (j = 0; j < sizeof(modifiers) / sizeof(*modifiers); j++)
                 XGrabKey(d, code, keys[i].mod | modifiers[j], root,
                         True, GrabModeAsync, GrabModeAsync);
 
     for (i = 1; i < 4; i += 2)
-        for (j = 0; j < sizeof(modifiers)/sizeof(*modifiers); j++)
+        for (j = 0; j < sizeof(modifiers) / sizeof(*modifiers); j++)
             XGrabButton(d, i, MOD | modifiers[j], root, True,
-                ButtonPressMask|ButtonReleaseMask|PointerMotionMask,
+                ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
                 GrabModeAsync, GrabModeAsync, 0, 0);
 
     XFreeModifiermap(modmap);
 }
 
-// ============================================================================
-// OVERLAY GRID FUNCTIONS FOR SOWM
-// ============================================================================
-
 void overlay_draw(void) {
     if (!overlay_win) return;
 
+    Monitor *m = selmon ? selmon : mons;
+    if (!m) return;
+
     XClearWindow(d, overlay_win);
 
-    int cell_w = (sw - padding * (GRID_COLS + 1)) / GRID_COLS;
-    int cell_h = (sh - padding * (GRID_ROWS + 1)) / GRID_ROWS;
+    int cell_w = (m->w - padding * (GRID_COLS + 1)) / GRID_COLS;
+    int cell_h = (m->h - padding * (GRID_ROWS + 1)) / GRID_ROWS;
 
     int r1 = -1, c1 = -1, r2 = -1, c2 = -1;
     if (overlay_input[0]) {
         for (int r = 0; r < GRID_ROWS; r++)
             for (int c = 0; c < GRID_COLS; c++)
-                if (grid_chars[r][c] == overlay_input[0]) { r1 = r; c1 = c; }
+                if (grid_chars[r][c] == overlay_input[0]) {
+                    r1 = r;
+                    c1 = c;
+                }
     }
     if (overlay_input[1]) {
         for (int r = 0; r < GRID_ROWS; r++)
             for (int c = 0; c < GRID_COLS; c++)
-                if (grid_chars[r][c] == overlay_input[1]) { r2 = r; c2 = c; }
+                if (grid_chars[r][c] == overlay_input[1]) {
+                    r2 = r;
+                    c2 = c;
+                }
     }
 
     for (int r = 0; r < GRID_ROWS; r++) {
         for (int c = 0; c < GRID_COLS; c++) {
-            int x = padding + c * (cell_w + padding);
-            int y = padding + r * (cell_h + padding);
+            int x = m->x + padding + c * (cell_w + padding);
+            int y = m->y + padding + r * (cell_h + padding);
 
             int is_selected = 0;
             if (r1 >= 0 && c1 >= 0) {
@@ -396,13 +540,13 @@ void overlay_draw(void) {
             if (font && xftdraw) {
                 char txt[2] = {grid_chars[r][c], 0};
                 XGlyphInfo extents;
-                XftTextExtentsUtf8(d, font, (FcChar8*)txt, strlen(txt), &extents);
+                XftTextExtentsUtf8(d, font, (FcChar8 *)txt, strlen(txt), &extents);
 
                 int tx = x + (cell_w - extents.width) / 2;
                 int ty = y + (cell_h - extents.height) / 2 + extents.y;
 
                 XftDrawStringUtf8(xftdraw, &xft_col_foreground, font, tx, ty,
-                                (FcChar8*)txt, strlen(txt));
+                                (FcChar8 *)txt, strlen(txt));
             }
         }
     }
@@ -414,9 +558,9 @@ void overlay_draw(void) {
                 overlay_input[1] ? overlay_input[1] : ' ');
 
         if (font && xftdraw) {
-            XftDrawStringUtf8(xftdraw, &xft_col_foreground, font, 
-                            20, sh - 20,
-                            (FcChar8*)status, strlen(status));
+            XftDrawStringUtf8(xftdraw, &xft_col_foreground, font,
+                            m->x + 20, m->y + m->h - 20,
+                            (FcChar8 *)status, strlen(status));
         }
     }
 
@@ -424,6 +568,7 @@ void overlay_draw(void) {
 }
 
 void overlay_enter(const Arg arg) {
+    (void)arg;
     if (!cur) return;
 
     overlay_mode = 1;
@@ -468,26 +613,43 @@ void overlay_hide(void) {
 void overlay_process_input(void) {
     if (!cur || overlay_input[0] == 0 || overlay_input[1] == 0) return;
 
+    Monitor *m = selmon ? selmon : mons;
+    if (!m) return;
+
     int r1 = -1, c1 = -1, r2 = -1, c2 = -1;
     for (int r = 0; r < GRID_ROWS; r++) {
         for (int c = 0; c < GRID_COLS; c++) {
-            if (grid_chars[r][c] == overlay_input[0]) { r1 = r; c1 = c; }
-            if (grid_chars[r][c] == overlay_input[1]) { r2 = r; c2 = c; }
+            if (grid_chars[r][c] == overlay_input[0]) {
+                r1 = r;
+                c1 = c;
+            }
+            if (grid_chars[r][c] == overlay_input[1]) {
+                r2 = r;
+                c2 = c;
+            }
         }
     }
     if (r1 == -1 || r2 == -1) return;
 
-    if (r1 > r2) { int t = r1; r1 = r2; r2 = t; }
-    if (c1 > c2) { int t = c1; c1 = c2; c2 = t; }
+    if (r1 > r2) {
+        int t = r1;
+        r1 = r2;
+        r2 = t;
+    }
+    if (c1 > c2) {
+        int t = c1;
+        c1 = c2;
+        c2 = t;
+    }
 
     int cols_span = c2 - c1 + 1;
     int rows_span = r2 - r1 + 1;
 
-    int cell_w = (sw - padding * (GRID_COLS + 1)) / GRID_COLS;
-    int cell_h = (sh - padding * (GRID_ROWS + 1)) / GRID_ROWS;
+    int cell_w = (m->w - padding * (GRID_COLS + 1)) / GRID_COLS;
+    int cell_h = (m->h - padding * (GRID_ROWS + 1)) / GRID_ROWS;
 
-    int x = padding + c1 * (cell_w + padding);
-    int y = padding + r1 * (cell_h + padding);
+    int x = m->x + padding + c1 * (cell_w + padding);
+    int y = m->y + padding + r1 * (cell_h + padding);
     int w = cols_span * cell_w + (cols_span - 1) * padding;
     int h = rows_span * cell_h + (rows_span - 1) * padding;
 
@@ -503,6 +665,7 @@ void expose(XEvent *e) {
 
 int main(void) {
     XEvent ev;
+    int randr_event_base, randr_error_base;
 
     if (!(d = XOpenDisplay(0))) exit(1);
 
@@ -510,22 +673,29 @@ int main(void) {
     XSetErrorHandler(xerror);
 
     int s = DefaultScreen(d);
-    root  = RootWindow(d, s);
-    sw    = XDisplayWidth(d, s);
-    sh    = XDisplayHeight(d, s);
+    root = RootWindow(d, s);
+    
+    if (!XRRQueryExtension(d, &randr_event_base, &randr_error_base)) {
+        fprintf(stderr, "mewm: xrandr extension not available\n");
+    } else {
+        XRRSelectInput(d, root, RRScreenChangeNotifyMask);
+    }
+    
+    geometry_update();
 
     Colormap cmap = DefaultColormap(d, DefaultScreen(d));
-	XColor color;
+    XColor color;
 
-	if (XParseColor(d, cmap, root_background, &color) &&
-		XAllocColor(d, cmap, &color)) {
-		XSetWindowBackground(d, root, color.pixel);
-		XClearWindow(d, root);
-	}
+    if (XParseColor(d, cmap, root_background, &color) &&
+        XAllocColor(d, cmap, &color)) {
+        XSetWindowBackground(d, root, color.pixel);
+        XClearWindow(d, root);
+    }
 
-    XSelectInput(d,  root, SubstructureRedirectMask);
+    XSelectInput(d, root, SubstructureRedirectMask);
     XDefineCursor(d, root, XCreateFontCursor(d, 68));
     input_grab(root);
+    
     Visual *visual = DefaultVisual(d, s);
     cmap = DefaultColormap(d, s);
     XftColorAllocName(d, visual, cmap, ow_background, &xft_col_background);
@@ -533,6 +703,14 @@ int main(void) {
     XftColorAllocName(d, visual, cmap, ow_selection, &xft_col_selection);
     font = XftFontOpenName(d, s, overlay_font);
 
-    while (1 && !XNextEvent(d, &ev)) // 1 && will forever be here.
-        if (events[ev.type]) events[ev.type](&ev);
+    while (1 && !XNextEvent(d, &ev)) {
+        if (ev.type == randr_event_base + RRScreenChangeNotify) {
+            handle_randr_event(&ev);
+        } else if (events[ev.type]) {
+            events[ev.type](&ev);
+        }
+    }
+    
+    monitor_cleanup();
+    return 0;
 }

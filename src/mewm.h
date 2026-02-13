@@ -1,3 +1,6 @@
+#ifndef MEWM_H
+#define MEWM_H
+
 #include <X11/Xlib.h>
 
 #define win        (client *t=0, *c=list; c && t!=list->prev; t=c, c=c->next)
@@ -9,12 +12,11 @@
     XGetGeometry(d, W, &(Window){0}, gx, gy, gw, gh, \
                  &(unsigned int){0}, &(unsigned int){0})
 
-// Taken from DWM. Many thanks. https://git.suckless.org/dwm
 #define mod_clean(mask) (mask & ~(numlock|LockMask) & \
         (ShiftMask|ControlMask|Mod1Mask|Mod2Mask|Mod3Mask|Mod4Mask|Mod5Mask))
 
 typedef struct {
-    const char** com;
+    const char **com;
     const int i;
     const Window w;
 } Arg;
@@ -32,6 +34,11 @@ typedef struct client {
     unsigned int ww, wh;
     Window w;
 } client;
+
+typedef struct Monitor {
+    int x, y, w, h;
+    struct Monitor *next;
+} Monitor;
 
 static int overlay_mode = 0;
 static char overlay_input[3] = {0};
@@ -69,4 +76,18 @@ void overlay_enter(const Arg arg);
 void overlay_process_input(void);
 void expose(XEvent *e);
 
-static int xerror() { return 0; }
+void geometry_update(void);
+void monitor_create(int x, int y, int w, int h);
+void monitor_cleanup(void);
+int monitor_exists(Monitor *mon);
+Monitor *get_monitor_at(int x, int y);
+Monitor *get_window_monitor(Window w);
+void handle_randr_event(XEvent *e);
+
+static int xerror(Display *dpy, XErrorEvent *ee) { 
+    (void)dpy;
+    (void)ee;
+    return 0; 
+}
+
+#endif
