@@ -24,7 +24,7 @@ This project started as an attempt to merge sowm with gbwm, but ultimately went 
 - **Focus follows mouse** - Natural workflow
 - **Mix of mouse and keyboard** - Use what works
 - **Multiple workspaces** - 9 virtual desktops
-- **No cruft** - No ICCCM, minimal EWMH, just what works
+- **No cruft** - Minimal ICCCM, no EWMH, just what works
 
 ### New in mewm
 - **Grid overlay system** - Visual grid for precise window placement
