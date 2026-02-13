@@ -33,6 +33,15 @@ typedef struct client {
     Window w;
 } client;
 
+static int overlay_mode = 0;
+static char overlay_input[3] = {0};
+static Window overlay_win = 0;
+static GC gc;
+static XftDraw *xftdraw = NULL;
+static XftFont *font = NULL;
+static XftColor xft_col_background, xft_col_foreground, xft_col_selection;
+static int padding = 10;
+
 void button_press(XEvent *e);
 void button_release(XEvent *e);
 void configure_request(XEvent *e);
@@ -54,5 +63,10 @@ void win_prev(const Arg arg);
 void win_next(const Arg arg);
 void win_to_ws(const Arg arg);
 void ws_go(const Arg arg);
+void overlay_draw(void);
+void overlay_hide(void);
+void overlay_enter(const Arg arg);
+void overlay_process_input(void);
+void expose(XEvent *e);
 
 static int xerror() { return 0; }
