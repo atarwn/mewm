@@ -1,14 +1,18 @@
-// sowm - An itsy bitsy floating window manager.
-
+#define _POSIX_C_SOURCE 199309L
+#include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/XF86keysym.h>
 #include <X11/keysym.h>
 #include <X11/XKBlib.h>
+#include <X11/Xft/Xft.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include <signal.h>
 #include <unistd.h>
+#include <time.h>
 
-#include "sowm.h"
+#include "mewm.h"
 
 static client       *list = {0}, *ws_list[10] = {0}, *cur;
 static int          ws = 1, sw, sh, wx, wy, numlock = 0;
@@ -27,7 +31,8 @@ static void (*events[LASTEvent])(XEvent *e) = {
     [MappingNotify]    = mapping_notify,
     [DestroyNotify]    = notify_destroy,
     [EnterNotify]      = notify_enter,
-    [MotionNotify]     = notify_motion
+    [MotionNotify]     = notify_motion,
+    [Expose]           = expose
 };
 
 #include "config.h"
@@ -65,6 +70,56 @@ void notify_motion(XEvent *e) {
 }
 
 void key_press(XEvent *e) {
+    if (overlay_mode) {
+        KeySym k = XLookupKeysym(&e->xkey, 0);
+        
+        if (k == XK_Escape) {
+            overlay_hide();
+            return;
+        }
+        
+        if (k == XK_BackSpace) {
+            if (overlay_input[1] != 0) {
+                overlay_input[1] = 0;
+            } else if (overlay_input[0] != 0) {
+                overlay_input[0] = 0;
+            }
+            overlay_draw();
+            return;
+        }
+
+        char ch = 0;
+        if (k >= '0' && k <= '9') ch = (char)k;
+        else if (k >= 'a' && k <= 'z') ch = (char)k;
+        else if (k >= 'A' && k <= 'Z') ch = (char)(k - 'A' + 'a');
+        else return;
+
+        int found = 0;
+        for (int r = 0; r < GRID_ROWS && !found; r++)
+            for (int c = 0; c < GRID_COLS && !found; c++)
+                if (grid_chars[r][c] == ch) found = 1;
+        if (!found) return;
+
+        if (overlay_input[0] == 0) {
+            overlay_input[0] = ch;
+            overlay_draw();
+        } else if (overlay_input[1] == 0) {
+            overlay_input[1] = ch;
+            overlay_draw();
+            
+            // Небольшая задержка для визуализации
+            struct timespec ts = {
+                .tv_sec = 0,
+                .tv_nsec = 150000 * 1000
+            };
+            nanosleep(&ts, NULL);
+            
+            overlay_process_input();
+            overlay_hide();
+        }
+        return;
+    }
+
     KeySym keysym = XkbKeycodeToKeysym(d, e->xkey.keycode, 0, 0);
 
     for (unsigned int i=0; i < sizeof(keys)/sizeof(*keys); ++i)
@@ -267,6 +322,165 @@ void input_grab(Window root) {
     XFreeModifiermap(modmap);
 }
 
+// ============================================================================
+// OVERLAY GRID FUNCTIONS FOR SOWM
+// ============================================================================
+
+void overlay_draw(void) {
+    if (!overlay_win) return;
+
+    XClearWindow(d, overlay_win);
+
+    int cell_w = (sw - padding * (GRID_COLS + 1)) / GRID_COLS;
+    int cell_h = (sh - padding * (GRID_ROWS + 1)) / GRID_ROWS;
+
+    int r1 = -1, c1 = -1, r2 = -1, c2 = -1;
+    if (overlay_input[0]) {
+        for (int r = 0; r < GRID_ROWS; r++)
+            for (int c = 0; c < GRID_COLS; c++)
+                if (grid_chars[r][c] == overlay_input[0]) { r1 = r; c1 = c; }
+    }
+    if (overlay_input[1]) {
+        for (int r = 0; r < GRID_ROWS; r++)
+            for (int c = 0; c < GRID_COLS; c++)
+                if (grid_chars[r][c] == overlay_input[1]) { r2 = r; c2 = c; }
+    }
+
+    for (int r = 0; r < GRID_ROWS; r++) {
+        for (int c = 0; c < GRID_COLS; c++) {
+            int x = padding + c * (cell_w + padding);
+            int y = padding + r * (cell_h + padding);
+
+            int is_selected = 0;
+            if (r1 >= 0 && c1 >= 0) {
+                if (r2 >= 0 && c2 >= 0) {
+                    int min_r = r1 < r2 ? r1 : r2;
+                    int max_r = r1 > r2 ? r1 : r2;
+                    int min_c = c1 < c2 ? c1 : c2;
+                    int max_c = c1 > c2 ? c1 : c2;
+                    if (r >= min_r && r <= max_r && c >= min_c && c <= max_c)
+                        is_selected = 1;
+                } else if (r == r1 && c == c1) {
+                    is_selected = 1;
+                }
+            }
+
+            if (is_selected) {
+                XSetForeground(d, gc, xft_col_selection.pixel);
+                XFillRectangle(d, overlay_win, gc, x, y, cell_w, cell_h);
+            }
+
+            XSetForeground(d, gc, xft_col_foreground.pixel);
+            XDrawRectangle(d, overlay_win, gc, x, y, cell_w, cell_h);
+
+            if (font && xftdraw) {
+                char txt[2] = {grid_chars[r][c], 0};
+                XGlyphInfo extents;
+                XftTextExtentsUtf8(d, font, (FcChar8*)txt, strlen(txt), &extents);
+
+                int tx = x + (cell_w - extents.width) / 2;
+                int ty = y + (cell_h - extents.height) / 2 + extents.y;
+
+                XftDrawStringUtf8(xftdraw, &xft_col_foreground, font, tx, ty,
+                                (FcChar8*)txt, strlen(txt));
+            }
+        }
+    }
+
+    if (overlay_input[0] || overlay_input[1]) {
+        char status[64];
+        snprintf(status, sizeof(status), "Input: %c%c",
+                overlay_input[0] ? overlay_input[0] : ' ',
+                overlay_input[1] ? overlay_input[1] : ' ');
+
+        if (font && xftdraw) {
+            XftDrawStringUtf8(xftdraw, &xft_col_foreground, font, 
+                            20, sh - 20,
+                            (FcChar8*)status, strlen(status));
+        }
+    }
+
+    XFlush(d);
+}
+
+void overlay_enter(const Arg arg) {
+    if (!cur) return;
+
+    overlay_mode = 1;
+    memset(overlay_input, 0, sizeof(overlay_input));
+
+    if (!overlay_win) {
+        XSetWindowAttributes wa = {
+            .override_redirect = True,
+            .background_pixel = xft_col_background.pixel,
+            .event_mask = ExposureMask | KeyPressMask
+        };
+        overlay_win = XCreateWindow(d, root, 0, 0, sw, sh, 0,
+            CopyFromParent, InputOutput, CopyFromParent,
+            CWOverrideRedirect | CWBackPixel | CWEventMask, &wa);
+
+        gc = XCreateGC(d, overlay_win, 0, NULL);
+
+        Visual *visual = DefaultVisual(d, DefaultScreen(d));
+        Colormap cmap = DefaultColormap(d, DefaultScreen(d));
+        xftdraw = XftDrawCreate(d, overlay_win, visual, cmap);
+    } else {
+        XMoveResizeWindow(d, overlay_win, 0, 0, sw, sh);
+        XClearWindow(d, overlay_win);
+    }
+
+    XMapRaised(d, overlay_win);
+    XSetInputFocus(d, overlay_win, RevertToPointerRoot, CurrentTime);
+    overlay_draw();
+}
+
+void overlay_hide(void) {
+    overlay_mode = 0;
+    memset(overlay_input, 0, sizeof(overlay_input));
+    if (overlay_win) {
+        XUnmapWindow(d, overlay_win);
+    }
+    if (cur) {
+        XSetInputFocus(d, cur->w, RevertToParent, CurrentTime);
+    }
+}
+
+void overlay_process_input(void) {
+    if (!cur || overlay_input[0] == 0 || overlay_input[1] == 0) return;
+
+    int r1 = -1, c1 = -1, r2 = -1, c2 = -1;
+    for (int r = 0; r < GRID_ROWS; r++) {
+        for (int c = 0; c < GRID_COLS; c++) {
+            if (grid_chars[r][c] == overlay_input[0]) { r1 = r; c1 = c; }
+            if (grid_chars[r][c] == overlay_input[1]) { r2 = r; c2 = c; }
+        }
+    }
+    if (r1 == -1 || r2 == -1) return;
+
+    if (r1 > r2) { int t = r1; r1 = r2; r2 = t; }
+    if (c1 > c2) { int t = c1; c1 = c2; c2 = t; }
+
+    int cols_span = c2 - c1 + 1;
+    int rows_span = r2 - r1 + 1;
+
+    int cell_w = (sw - padding * (GRID_COLS + 1)) / GRID_COLS;
+    int cell_h = (sh - padding * (GRID_ROWS + 1)) / GRID_ROWS;
+
+    int x = padding + c1 * (cell_w + padding);
+    int y = padding + r1 * (cell_h + padding);
+    int w = cols_span * cell_w + (cols_span - 1) * padding;
+    int h = rows_span * cell_h + (rows_span - 1) * padding;
+
+    XMoveResizeWindow(d, cur->w, x, y, w, h);
+    win_focus(cur);
+}
+
+void expose(XEvent *e) {
+    if (e->xexpose.window == overlay_win && overlay_mode) {
+        overlay_draw();
+    }
+}
+
 int main(void) {
     XEvent ev;
 
@@ -280,9 +494,24 @@ int main(void) {
     sw    = XDisplayWidth(d, s);
     sh    = XDisplayHeight(d, s);
 
+    Colormap cmap = DefaultColormap(d, DefaultScreen(d));
+	XColor color;
+
+	if (XParseColor(d, cmap, root_background, &color) &&
+		XAllocColor(d, cmap, &color)) {
+		XSetWindowBackground(d, root, color.pixel);
+		XClearWindow(d, root);
+	}
+
     XSelectInput(d,  root, SubstructureRedirectMask);
     XDefineCursor(d, root, XCreateFontCursor(d, 68));
     input_grab(root);
+    Visual *visual = DefaultVisual(d, s);
+    cmap = DefaultColormap(d, s);
+    XftColorAllocName(d, visual, cmap, ow_background, &xft_col_background);
+    XftColorAllocName(d, visual, cmap, ow_foreground, &xft_col_foreground);
+    XftColorAllocName(d, visual, cmap, ow_selection, &xft_col_selection);
+    font = XftFontOpenName(d, s, overlay_font);
 
     while (1 && !XNextEvent(d, &ev)) // 1 && will forever be here.
         if (events[ev.type]) events[ev.type](&ev);
