@@ -1,12 +1,16 @@
-# mewm (Minimal Elegant Window Manager)
+<img width="270" align="left" alt="2026-02-13-235104_1920x1080_scrot" src="https://github.com/user-attachments/assets/b84bdc1f-fd87-4695-b0bd-a5f972f8cd4c" />
+
+# mewm
 
 > **An adequate fusion of gbwm and sowm**
 
-*A tiny floating window manager with grid-based window placement.*
+<p align=right><i>it just meows</i></p>
 
 ---
 
 ## Philosophy
+
+<img width="270" align="right" alt="2026-02-13-133055_1920x1080_scrot" src="https://github.com/user-attachments/assets/3af16b27-b78c-4cbd-b7a6-3444908393b7" />
 
 This project started as an attempt to merge sowm with gbwm, but ultimately went the opposite direction-building upon sowm's simplicity to create cleaner, more maintainable code. The result is a minimal floating window manager that adds intelligent grid-based window placement to sowm's already excellent foundation.
 
@@ -20,7 +24,7 @@ This project started as an attempt to merge sowm with gbwm, but ultimately went 
 - **Focus follows mouse** - Natural workflow
 - **Mix of mouse and keyboard** - Use what works
 - **Multiple workspaces** - 9 virtual desktops
-- **No cruft** - No ICCCM, minimal EWMH, just what works
+- **No cruft** - Minimal ICCCM, no EWMH, just what works
 
 ### New in mewm
 - **Grid overlay system** - Visual grid for precise window placement
@@ -117,44 +121,6 @@ Type=Application
 
 All configuration is done in `config.h` before compilation (suckless style).
 
-## Why mewm?
-
-- **Simpler than gbwm** - Removed multi-monitor complexity, EWMH bloat, and unnecessary abstractions
-- **Smarter than sowm** - Added intelligent grid-based placement while keeping the minimalist philosophy
-- **Easy to hack** - Small codebase, clear structure, well-commented
-- **Practical** - Grid overlay makes window management fast and precise
-- **Opinionated** - Does one thing (floating windows) and does it well
-
-## Differences from sowm
-
-### Added
-- Grid overlay system for precise window placement
-- Visual feedback during window sizing
-- Configurable grid layouts
-- Xft rendering for beautiful text
-
-### Removed
-- dylan's programs (like scr, bri and bud) from keys array
-- All other sowm functionality is preserved
-
-### Modified
-- Enhanced key handling for overlay mode
-- Slightly larger binary (but still tiny)
-
-## Differences from gbwm
-
-### Removed
-- Multi-monitor support
-- Full EWMH implementation
-- Tiling modes
-- Window arrange/rearrange logic
-- Complex monitor tracking
-
-### Kept
-- Grid overlay system (the best part!)
-- Clean grid-based placement
-- Visual feedback
-
 ## Technical Details
 
 - **Lines of code:** ~520 (compared to sowm's 220 and gbwm's 1100+)
@@ -163,18 +129,11 @@ All configuration is done in `config.h` before compilation (suckless style).
 - **Dependencies:** X11, Xft, Xrender
 - **Language:** Pure C99
 
-## Limitations
-
-- Single monitor only
-- No window decorations yet
-- No tiling (use the grid for that)
-- No saved layouts (restart and rearrange - builds character)
-
 ## Credits & Thanks
 
 **Based on:**
 - [sowm](https://github.com/dylanaraps/sowm) by Dylan Araps - The foundation
-- [gbwm](https://github.com/atarwn/gbwm) by me! - Grid overlay port
+- [gbwm](https://github.com/atarwn/gbwm) by me! (atarwn) - Grid overlay port
 
 **Also inspired by:**
 - [2bwm](https://github.com/venam/2bwm)
