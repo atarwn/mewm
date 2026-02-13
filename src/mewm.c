@@ -15,6 +15,15 @@
 
 #include "mewm.h"
 
+static int overlay_mode = 0;
+static char overlay_input[3] = {0};
+static Window overlay_win = 0;
+static GC gc;
+static XftDraw *xftdraw = NULL;
+static XftFont *font = NULL;
+static XftColor xft_col_background, xft_col_foreground, xft_col_selection;
+static int padding = 10;
+
 static client       *list = {0}, *ws_list[10] = {0}, *cur,
                     *ws_last_focus[10] = {0};
 static int          ws = 1, sw, sh, wx, wy, numlock = 0;
@@ -26,6 +35,8 @@ static Window       root;
 
 static Monitor      *mons = NULL;
 static Monitor      *selmon = NULL;
+
+static Atom wm_protocols, wm_delete_window;
 
 static void (*events[LASTEvent])(XEvent *e) = {
     [ButtonPress]      = button_press,
@@ -291,8 +302,34 @@ void win_del(Window w) {
 }
 
 void win_kill(const Arg arg) {
-    (void)arg;
-    if (cur) XKillClient(d, cur->w);
+    if (!cur) return;
+    
+    int n;
+    Atom *protocols;
+    int exists = 0;
+    
+    if (XGetWMProtocols(d, cur->w, &protocols, &n)) {
+        for (int i = 0; i < n; i++) {
+            if (protocols[i] == wm_delete_window) {
+                exists = 1;
+                break;
+            }
+        }
+        XFree(protocols);
+    }
+    
+    if (exists) {
+        XEvent ev;
+        ev.type = ClientMessage;
+        ev.xclient.window = cur->w;
+        ev.xclient.message_type = wm_protocols;
+        ev.xclient.format = 32;
+        ev.xclient.data.l[0] = wm_delete_window;
+        ev.xclient.data.l[1] = CurrentTime;
+        XSendEvent(d, cur->w, False, NoEventMask, &ev);
+    } else {
+        XKillClient(d, cur->w);
+    }
 }
 
 void win_center(const Arg arg) {
