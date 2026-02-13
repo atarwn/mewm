@@ -196,9 +196,10 @@ void win_fs(const Arg arg) {
     if ((cur->f = cur->f ? 0 : 1)) {
         win_size(cur->w, &cur->wx, &cur->wy, &cur->ww, &cur->wh);
         XMoveResizeWindow(d, cur->w, 0, 0, sw, sh);
-
+        XRaiseWindow(d, cur->w);
     } else {
         XMoveResizeWindow(d, cur->w, cur->wx, cur->wy, cur->ww, cur->wh);
+        XRaiseWindow(d, cur->w);
     }
 }
 
