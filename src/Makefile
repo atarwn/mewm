@@ -4,7 +4,7 @@ X11LIB = /usr/lib/X11
 FREETYPEINC = /usr/include/freetype2
 
 INCS = -I${X11INC} -I${FREETYPEINC}
-LIBS = -L${X11LIB} -lX11 -lfontconfig -lXft
+LIBS = -L${X11LIB} -lX11 -lfontconfig -lXft -lXrandr
 
 CFLAGS += -std=c99 -Wall -Wextra -pedantic -Wold-style-declaration
 CFLAGS += -Wmissing-prototypes -Wno-unused-parameter ${INCS}

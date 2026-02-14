@@ -12,12 +12,11 @@
     XGetGeometry(d, W, &(Window){0}, gx, gy, gw, gh, \
                  &(unsigned int){0}, &(unsigned int){0})
 
-// Taken from DWM. Many thanks. https://git.suckless.org/dwm
 #define mod_clean(mask) (mask & ~(numlock|LockMask) & \
         (ShiftMask|ControlMask|Mod1Mask|Mod2Mask|Mod3Mask|Mod4Mask|Mod5Mask))
 
 typedef struct {
-    const char** com;
+    const char **com;
     const int i;
     const Window w;
 } Arg;
@@ -35,6 +34,11 @@ typedef struct client {
     unsigned int ww, wh;
     Window w;
 } client;
+
+typedef struct Monitor {
+    int x, y, w, h;
+    struct Monitor *next;
+} Monitor;
 
 void button_press(XEvent *e);
 void button_release(XEvent *e);
