@@ -499,6 +499,7 @@ void overlay_hide(void) {
         XUnmapWindow(d, overlay_win);
     }
     if (cur) {
+        XRaiseWindow(d, cur->w);
         XSetInputFocus(d, cur->w, RevertToParent, CurrentTime);
     }
 }
