@@ -162,15 +162,19 @@ Monitor* get_window_monitor(Window w) {
 void win_focus(client *c) {
     cur = c;
     ws_last_focus[ws] = c;
-    XSetInputFocus(d, cur->w, RevertToParent, CurrentTime);
+    XRaiseWindow(d, cur->w);
+    XSetInputFocus(d, cur->w, RevertToPointerRoot, CurrentTime);
     
     selmon = get_window_monitor(c->w);
 }
 
 void notify_destroy(XEvent *e) {
     win_del(e->xdestroywindow.window);
-
-    if (list) win_focus(list->prev);
+    if (!list) { cur = 0; return; }
+    client *target = ws_last_focus[ws];
+    int valid = 0;
+    for win if (c == target) valid = 1;
+    win_focus(valid ? target : list);
 }
 
 void notify_enter(XEvent *e) {
@@ -258,6 +262,8 @@ void button_press(XEvent *e) {
     win_size(e->xbutton.subwindow, &wx, &wy, &ww, &wh);
     XRaiseWindow(d, e->xbutton.subwindow);
     mouse = e->xbutton;
+
+    for win if (c->w == e->xbutton.subwindow) win_focus(c);
 }
 
 void button_release(XEvent *e) {
@@ -452,7 +458,7 @@ void map_request(XEvent *e) {
     if (wx + wy == 0) win_center((Arg){0});
 
     XMapWindow(d, w);
-    win_focus(list->prev);
+    win_focus(cur);
 }
 
 void mapping_notify(XEvent *e) {
