@@ -40,6 +40,13 @@ typedef struct Monitor {
     struct Monitor *next;
 } Monitor;
 
+void geometry_update(void);
+void monitor_create(int x, int y, int w, int h);
+void monitor_cleanup(void);
+int monitor_exists(Monitor *mon);
+Monitor* get_monitor_at(int x, int y);
+Monitor* get_window_monitor(Window w);
+
 void button_press(XEvent *e);
 void button_release(XEvent *e);
 void configure_request(XEvent *e);
@@ -50,6 +57,7 @@ void mapping_notify(XEvent *e);
 void notify_destroy(XEvent *e);
 void notify_enter(XEvent *e);
 void notify_motion(XEvent *e);
+void handle_randr_event(XEvent *e);
 void run(const Arg arg);
 void win_add(Window w);
 void win_center(const Arg arg);
