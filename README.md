@@ -1,6 +1,6 @@
-<img width="270" align="left" alt="2026-02-13-235104_1920x1080_scrot" src="https://github.com/user-attachments/assets/b84bdc1f-fd87-4695-b0bd-a5f972f8cd4c" />
-
 # mewm
+
+<img width="270" align="right" alt="2026-02-13-133055_1920x1080_scrot" src="https://github.com/user-attachments/assets/3af16b27-b78c-4cbd-b7a6-3444908393b7" />
 
 > **An adequate fusion of gbwm and sowm**
 
@@ -10,7 +10,7 @@
 
 ## Philosophy
 
-<img width="270" align="right" alt="2026-02-13-133055_1920x1080_scrot" src="https://github.com/user-attachments/assets/3af16b27-b78c-4cbd-b7a6-3444908393b7" />
+<img width="270" align="right" alt="2026-02-13-235104_1920x1080_scrot" src="https://github.com/user-attachments/assets/b84bdc1f-fd87-4695-b0bd-a5f972f8cd4c" />
 
 This project started as an attempt to merge sowm with gbwm, but ultimately went the opposite direction-building upon sowm's simplicity to create cleaner, more maintainable code. The result is a minimal floating window manager that adds intelligent grid-based window placement to sowm's already excellent foundation.
 
